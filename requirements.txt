@@ -1,0 +1,7 @@
+# Минимальные зависимости Nook (GUI + модель).
+pywebview>=6.2
+rapidfuzz>=3.9
+platformdirs>=4.2
+
+# should-фичи: слежение за папкой зоны
+watchdog>=4.0
