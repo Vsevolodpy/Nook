@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Sequence
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS files (
@@ -55,7 +55,11 @@ CREATE INDEX IF NOT EXISTS idx_added_at ON files(added_at);
 CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag_id);
 """
 
-MIGRATIONS: tuple[str, ...] = (_SCHEMA_V1,)
+MIGRATIONS: tuple[str, ...] = (
+    _SCHEMA_V1,
+    # v2: дата создания файла (на Windows — st_ctime, то есть время создания).
+    "ALTER TABLE files ADD COLUMN created_at TEXT;",
+)
 
 
 class Database:

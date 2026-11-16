@@ -87,12 +87,12 @@
           <input
             id="query"
             type="text"
-            placeholder="Имя файла…   \   #тег  [&lt;12.04.2020]  .pdf"
+            placeholder="Имя файла…   \   #тег  <12.04.2020  .pdf"
             spellcheck="false"
             autocomplete="off"
             aria-label="Поиск по зоне"
           />
-          <kbd class="kbd">Ctrl K</kbd>
+          <kbd class="kbd" id="kbd-hint" title="Ctrl+K — перейти в строку поиска">Ctrl K</kbd>
         </div>
         <div class="query-hint" id="query-hint"></div>
         <div class="suggest" id="query-suggest" hidden></div>
@@ -108,18 +108,20 @@
           <div class="legend">
             <span>Двойной клик — открыть</span>
             <span>Enter — первый результат</span>
+            <span>Ctrl+K — в поиск</span>
           </div>
         </div>
 
         <div class="table-wrap" id="table-wrap">
           <table class="grid">
             <colgroup>
-              <col style="width: 42px" />
-              <col style="width: 40%" />
-              <col style="width: 26%" />
-              <col style="width: 140px" />
-              <col style="width: 100px" />
-              <col style="width: 108px" />
+              <col class="c-check" />
+              <col class="c-name" />
+              <col class="c-tags" />
+              <col class="c-added" />
+              <col class="c-changed" id="col-changed" />
+              <col class="c-size" />
+              <col class="c-actions" />
             </colgroup>
             <thead>
               <tr>
@@ -127,6 +129,7 @@
                 <th class="sortable" data-sort="name">Имя<span class="arrow" data-arrow="name"></span></th>
                 <th>Теги</th>
                 <th class="sortable" data-sort="added">Добавлен<span class="arrow" data-arrow="added"></span></th>
+                <th class="sortable col-changed" data-sort="mtime">Изменён<span class="arrow" data-arrow="mtime"></span></th>
                 <th class="sortable col-size" data-sort="size">Размер<span class="arrow" data-arrow="size"></span></th>
                 <th></th>
               </tr>
@@ -184,7 +187,7 @@
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-title">
         <div class="sheet-head">
           <h2 id="add-title">Добавить в зону</h2>
-          <p><span id="add-count">0</span> файлов · дубликаты будут пропущены автоматически</p>
+          <p><span id="add-count">0</span> <span id="add-count-label">файлов</span> · дубликаты будут пропущены автоматически</p>
         </div>
         <div class="sheet-body">
           <div>
@@ -192,11 +195,11 @@
             <ul class="file-list" id="add-files"></ul>
           </div>
           <div>
-            <div class="field-label"><span>Теги</span><span class="opt">Enter — добавить, Tab — подсказка</span></div>
+            <div class="field-label"><span>Теги</span><span class="opt">Enter — добавить, пустой Enter — применить</span></div>
             <div class="tagbox" id="add-tagbox">
               <input type="text" placeholder="курсовая2024" aria-label="Теги" />
-              <div class="suggest" hidden></div>
             </div>
+            <div class="suggest tag-suggest" id="add-tag-suggest" hidden></div>
           </div>
           <div>
             <div class="field-label"><span>Заметка</span><span class="opt">необязательно</span></div>
@@ -215,15 +218,15 @@
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tag-title">
         <div class="sheet-head">
           <h2 id="tag-title">Тег для выделенных</h2>
-          <p><span id="tag-count">0</span> файлов · тег можно повесить на все сразу</p>
+          <p><span id="tag-count">0</span> <span id="tag-count-label">файлов</span> · тег можно повесить на все сразу</p>
         </div>
         <div class="sheet-body">
           <div>
-            <div class="field-label"><span>Теги</span><span class="opt">Enter — добавить</span></div>
+            <div class="field-label"><span>Теги</span><span class="opt">Enter — добавить, пустой Enter — применить</span></div>
             <div class="tagbox" id="bulk-tagbox">
               <input type="text" placeholder="курсовая2024" aria-label="Теги" />
-              <div class="suggest" hidden></div>
             </div>
+            <div class="suggest tag-suggest" id="bulk-tag-suggest" hidden></div>
           </div>
         </div>
         <div class="sheet-foot">

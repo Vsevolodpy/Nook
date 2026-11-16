@@ -49,9 +49,15 @@ def test_add_missing_file_returns_error(library, tmp_path):
 
 
 def test_add_directory_is_rejected(library, tmp_path):
-    folder = tmp_path / "папка"
+    folder = tmp_path / "папка с документами"
     folder.mkdir()
-    assert library.zone.add(folder).status == "error"
+
+    result = library.zone.add(folder)
+
+    assert result.status == "error"
+    assert "папка" in result.message.lower()
+    assert "нельзя" in result.message.lower()
+    assert len(library.index) == 0
 
 
 def test_move_mode_removes_original(library, make_file):

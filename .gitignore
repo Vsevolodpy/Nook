@@ -3,9 +3,17 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .tmp-tests/
+.pytest-tmp/
+pytest-cache-files-*/
 .demo/
+.demo-empty/
 venv/
 .venv/
 build/
 dist/
 *.spec.bak
+
+# локальные заметки и скриншоты проверки — не часть репозитория
+report.md
+report/
+image*.png

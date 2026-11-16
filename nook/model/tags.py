@@ -65,6 +65,25 @@ class TagStore:
         )
         return [row["name"] for row in rows]
 
+    def for_files(self, file_ids: Iterable[int]) -> list[dict[str, object]]:
+        """Теги выделенных файлов — подсказка при массовом снятии тега."""
+        ids = [int(item) for item in file_ids or ()]
+        if not ids:
+            return []
+        placeholders = ",".join("?" * len(ids))
+        rows = self.db.query(
+            f"""
+            SELECT t.name AS name, COUNT(ft.file_id) AS count
+            FROM tags t
+            JOIN file_tags ft ON ft.tag_id = t.id
+            WHERE ft.file_id IN ({placeholders})
+            GROUP BY t.id
+            ORDER BY count DESC, t.name COLLATE NOCASE
+            """,
+            ids,
+        )
+        return [{"name": row["name"], "count": int(row["count"])} for row in rows]
+
     # --- запись -----------------------------------------------------------
     def set_for_file(self, file_id: int, names: Iterable[str]) -> list[str]:
         """Заменить набор тегов файла целиком."""

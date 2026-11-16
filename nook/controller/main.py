@@ -20,6 +20,11 @@ from ..model.config import APP_TITLE, MIN_WINDOW_SIZE, Settings
 
 logger = logging.getLogger("nook")
 
+# pywebview принимает фильтры только вида "Описание (*.ext)": в описании
+# допустимы буквы, цифры, подчёркивание и пробел — дефисы и скобки нельзя.
+ALL_FILES_FILTER = "Все файлы (*.*)"
+ZIP_FILES_FILTER = "ZIP архив (*.zip)"
+
 
 def view_dir() -> Path:
     """Каталог с HTML/CSS/JS — внутри .exe (PyInstaller) или рядом с пакетом."""
@@ -82,7 +87,7 @@ class Api:
         result = self._window.create_file_dialog(
             webview.FileDialog.OPEN,
             allow_multiple=True,
-            file_types=("Все файлы (*.*)",),
+            file_types=(ALL_FILES_FILTER,),
         )
         paths = [str(item) for item in (result or ())]
         return {"ok": True, "paths": paths}
@@ -141,6 +146,12 @@ class Api:
         return {"ok": True, "tags": self._library.tags.suggest(prefix or "", int(limit))}
 
     @api_method
+    def tags_for_files(self, ids: Sequence[int] | None = None) -> dict:
+        """Теги выделенных файлов — чтобы снимать тег выбором из списка."""
+        files = [int(item) for item in (ids or ())]
+        return {"ok": True, "tags": self._library.tags.for_files(files)}
+
+    @api_method
     def assign_tag(self, ids: Sequence[int] | None = None, tag: str = "") -> dict:
         return self._library.assign_tag([int(item) for item in (ids or ())], tag)
 
@@ -163,20 +174,33 @@ class Api:
     # --- экспорт ----------------------------------------------------------
     @api_method
     def export_zip(self) -> dict:
+        """Собрать zip. Диалог сохранения необязателен: если он недоступен,
+        экспорт всё равно состоится — в папку `exports` каталога данных."""
         if self._window is None:
             return {"ok": False, "error": "Окно ещё не готово"}
+
         from datetime import datetime
 
         suggested = f"nook-export-{datetime.now():%Y%m%d-%H%M}.zip"
-        target = self._window.create_file_dialog(
-            webview.FileDialog.SAVE,
-            save_filename=suggested,
-            file_types=("ZIP-архив (*.zip)",),
-        )
-        if isinstance(target, (list, tuple)):
-            target = target[0] if target else None
-        if not target:
+        target: str | None = None
+        dialog_failed = False
+        try:
+            picked = self._window.create_file_dialog(
+                webview.FileDialog.SAVE,
+                save_filename=suggested,
+                file_types=(ZIP_FILES_FILTER,),
+            )
+        except Exception:  # noqa: BLE001 - экспорт не должен зависеть от диалога
+            logger.exception("Диалог сохранения недоступен — пишу в папку экспорта")
+            dialog_failed = True
+        else:
+            if isinstance(picked, (list, tuple)):
+                picked = picked[0] if picked else None
+            target = str(picked) if picked else None
+
+        if not target and not dialog_failed:
             return {"ok": False, "canceled": True}
+
         path = self._library.zone.export_zip(target)
         return {"ok": True, "path": str(path), "count": len(self._library.index)}
 

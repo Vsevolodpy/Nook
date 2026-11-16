@@ -68,11 +68,18 @@ class Zone:
         src = Path(path).expanduser()
         if not src.exists():
             return AddResult("error", f"Файл не найден: {src}")
+        if src.is_dir():
+            return AddResult(
+                "error",
+                f"«{src.name}» — папка. В хранилище нельзя добавлять папки: "
+                "откройте её и перетащите нужные файлы.",
+            )
         if not src.is_file():
-            return AddResult("error", f"Это не файл: {src.name}")
+            return AddResult("error", f"«{src.name}» — не обычный файл, добавить нельзя.")
 
         try:
             digest = sha256_file(src)
+            source_stat = src.stat()
         except OSError as error:
             return AddResult("error", f"Не удалось прочитать {src.name}: {error}")
 
@@ -102,14 +109,14 @@ class Zone:
         except OSError as error:
             return AddResult("error", f"Не удалось скопировать {src.name}: {error}")
 
-        stat = src.stat() if src.exists() else destination.stat()
+        stat = source_stat if source_stat is not None else destination.stat()
         try:
             with self.db.transaction() as conn:
                 cursor = conn.execute(
                     """
                     INSERT INTO files(original_name, stored_path, hash, size,
-                                      added_at, mtime, note, source)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                      added_at, mtime, created_at, note, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         src.name[:MAX_NAME_LEN] or stored_rel,
@@ -118,6 +125,7 @@ class Zone:
                         destination.stat().st_size,
                         _now_iso(),
                         datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                        datetime.fromtimestamp(stat.st_ctime).isoformat(timespec="seconds"),
                         (note or "").strip() or None,
                         source,
                     ),

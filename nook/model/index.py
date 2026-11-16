@@ -15,7 +15,7 @@ _TAG_SEPARATOR = "\x1f"
 
 _SELECT_FILES = """
 SELECT f.id, f.original_name, f.stored_path, f.hash, f.size,
-       f.added_at, f.mtime, f.note, f.source,
+       f.added_at, f.mtime, f.created_at, f.note, f.source,
        GROUP_CONCAT(t.name, char(31)) AS tag_names
 FROM files f
 LEFT JOIN file_tags ft ON ft.file_id = f.id
@@ -37,6 +37,7 @@ class Record:
     size: int
     added_at: datetime
     mtime: datetime | None = None
+    created_at: datetime | None = None
     note: str | None = None
     source: str | None = None
     tags: tuple[str, ...] = ()
@@ -77,6 +78,7 @@ def record_from_row(row) -> Record:
         size=int(row["size"]),
         added_at=_parse_dt(row["added_at"]) or datetime.now(),
         mtime=_parse_dt(row["mtime"]),
+        created_at=_parse_dt(row["created_at"]),
         note=row["note"],
         source=row["source"],
         tags=tags,

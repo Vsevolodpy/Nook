@@ -105,7 +105,7 @@
     const value = String(raw || "");
     const index = value.indexOf("\\");
     let head = index >= 0 ? value.slice(0, index) : value;
-    const tail = index >= 0 ? value.slice(index + 1) : "";
+    let rest = index >= 0 ? value.slice(index + 1) : "";
 
     let ext = null;
     const extMatch = head.trimEnd().match(/\.([A-Za-z]{2,15})$/);
@@ -119,12 +119,28 @@
     const dates = [];
     const negDates = [];
 
-    for (const match of tail.matchAll(/(-?)\s*[#№]([^\s[\]#№]+)/g)) {
+    for (const match of rest.matchAll(/(-?)\s*\[([^\]]*)\]/g)) {
+      (match[1] ? negDates : dates).push(match[2].trim());
+    }
+    rest = rest.replace(/(-?)\s*\[([^\]]*)\]/g, " ");
+
+    for (const match of rest.matchAll(/(-?)\s*[#№]([^\s[\]#№]+)/g)) {
       const name = match[2].toLowerCase().replace(/ё/g, "е");
       (match[1] ? negTags : tags).push(name);
     }
-    for (const match of tail.matchAll(/(-?)\s*\[([^\]]*)\]/g)) {
-      (match[1] ? negDates : dates).push(match[2].trim());
+    rest = rest.replace(/(-?)\s*[#№]([^\s[\]#№]+)/g, " ");
+
+    if (!ext) {
+      const bareExt = rest.match(/(?:^|\s)\*?\.([A-Za-z]{2,15})(?=\s|$)/);
+      if (bareExt) {
+        ext = bareExt[1].toLowerCase();
+        rest = rest.replace(bareExt[0], " ");
+      }
+    }
+
+    const plainDate = /^(<=|>=|<|>)?(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\d{4}-\d{2}-\d{2})$/;
+    for (const token of rest.split(/\s+/)) {
+      if (plainDate.test(token)) dates.push(token);
     }
 
     return { text: head.trim(), tags, negTags, dates, negDates, ext, hasParams: index >= 0 };
@@ -170,7 +186,27 @@
   const countLabel = $("#count-label");
   const timingNode = $("#timing");
   const rowsNode = $("#rows");
+  const tableWrap = $("#table-wrap");
   const placeholder = $("#placeholder");
+  const COMPACT_WIDTH = 900;
+
+  /** В узком окне колонка «Изменён» убирается целиком (и <col>, и ячейки). */
+  function isCompact() {
+    return window.innerWidth < COMPACT_WIDTH;
+  }
+
+  function syncColumns() {
+    const colgroup = $("colgroup");
+    const col = document.getElementById("col-changed");
+    const compact = isCompact();
+    document.body.classList.toggle("compact", compact);
+    if (!col || !colgroup) return;
+    if (compact) {
+      col.remove();
+    } else if (!col.isConnected) {
+      colgroup.insertBefore(col, colgroup.children[5] || null);
+    }
+  }
   const placeholderTitle = $("#placeholder-title");
   const placeholderText = $("#placeholder-text");
 
@@ -182,6 +218,7 @@
     copy.sort((a, b) => {
       if (key === "size") return (a.size - b.size) * sign;
       if (key === "added") return a.added_at.localeCompare(b.added_at) * sign;
+      if (key === "mtime") return (a.mtime_at || "").localeCompare(b.mtime_at || "") * sign;
       return a.name.localeCompare(b.name, "ru") * sign;
     });
     return copy;
@@ -225,7 +262,8 @@
       const tagsCell = el("td", "col-tags");
       const tagsWrap = el("div", "tags-cell");
       const tags = item.tags || [];
-      tags.slice(0, 3).forEach((tag) => {
+      const maxTags = isCompact() ? 1 : 3;
+      tags.slice(0, maxTags).forEach((tag) => {
         const chip = el("button", "tag", `#${tag}`);
         chip.type = "button";
         chip.addEventListener("click", (event) => {
@@ -234,12 +272,25 @@
         });
         tagsWrap.appendChild(chip);
       });
-      if (tags.length > 3) tagsWrap.appendChild(el("span", "tag-more", `+${tags.length - 3}`));
+      if (tags.length > maxTags) tagsWrap.appendChild(el("span", "tag-more", `+${tags.length - maxTags}`));
       if (!tags.length) tagsWrap.appendChild(el("span", "muted", "—"));
       tagsCell.appendChild(tagsWrap);
 
       const dateCell = el("td", "col-date muted", item.added_at_human.split(" ")[0]);
+      const changedCell = el("td", "col-changed muted", item.mtime_at_human || "—");
       const sizeCell = el("td", "col-size muted", item.size_human);
+
+      tr.title = [
+        item.name,
+        `Добавлен: ${item.added_at_human}`,
+        item.mtime_at ? `Изменён: ${item.mtime_at.replace("T", " ").slice(0, 16)}` : "",
+        item.created_at ? `Создан: ${item.created_at.replace("T", " ").slice(0, 16)}` : "",
+        `Размер: ${item.size_human}`,
+        item.tags.length ? `Теги: ${item.tags.map((tag) => `#${tag}`).join(" ")}` : "",
+        item.note ? `Заметка: ${item.note}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
 
       // действия
       const actionsCell = el("td", "col-actions");
@@ -255,7 +306,11 @@
       );
       actionsCell.appendChild(actions);
 
-      tr.append(checkCell, nameCell, tagsCell, dateCell, sizeCell, actionsCell);
+      tr.append(
+        ...[checkCell, nameCell, tagsCell, dateCell]
+          .concat(isCompact() ? [] : [changedCell])
+          .concat([sizeCell, actionsCell]),
+      );
       tr.addEventListener("click", (event) => {
         if (event.target.closest("button, input, a")) return;
         toggleSelection(item.id);
@@ -291,6 +346,7 @@
   function renderPlaceholder(shown) {
     const hasQuery = queryInput.value.trim().length > 0;
     placeholder.hidden = shown > 0;
+    tableWrap.classList.toggle("is-empty", shown === 0);
     if (shown > 0) return;
 
     if (hasQuery) {
@@ -301,7 +357,7 @@
       );
       placeholderText.append(el("code", "", "\\"));
       placeholderText.append(", например ");
-      placeholderText.append(el("code", "", "\\ #курсовая [<12.04.2020]"));
+      placeholderText.append(el("code", "", "\\ #курсовая <12.04.2020"));
       return;
     }
 
@@ -581,17 +637,27 @@
 
   // ---------------------------------------------------------------- редактор тегов
   class TagBox {
-    constructor(root) {
+    constructor(root, options = {}) {
       this.root = root;
       this.input = $("input[type=text]", root);
-      this.suggest = $(".suggest", root);
+      this.suggest = options.suggest || $(".suggest", root);
       this.tags = [];
       this.items = [];
       this.index = -1;
       this.timer = null;
+      this.preset = [];
+      this.onlyPreset = false;
+      this.navigated = false;
+      this.onEmptyEnter = options.onEmptyEnter || null;
 
       this.input.addEventListener("keydown", (event) => this.onKeyDown(event));
-      this.input.addEventListener("input", () => this.onInput());
+      this.input.addEventListener("input", () => {
+        this.navigated = false;
+        this.onInput();
+      });
+      this.input.addEventListener("focus", () => {
+        if (!this.input.value && this.preset.length) this.onInput();
+      });
       this.input.addEventListener("blur", () => setTimeout(() => this.hideSuggest(), 120));
       root.addEventListener("mousedown", (event) => {
         if (event.target === root) {
@@ -617,6 +683,18 @@
       this.render();
     }
 
+    setPreset(names, options = {}) {
+      this.preset = (names || []).map((name) => String(name));
+      // only — подсказывать строго из preset, без общих тегов зоны.
+      this.onlyPreset = Boolean(options.only);
+    }
+
+    /** Если текст набран, но Enter не нажат — всё равно считаем его тегом. */
+    commit() {
+      const value = this.input.value.trim();
+      if (value) this.add(value);
+    }
+
     add(raw) {
       const name = String(raw || "")
         .trim()
@@ -625,6 +703,7 @@
       if (!name) return;
       if (!this.tags.some((tag) => tag.toLowerCase() === name.toLowerCase())) this.tags.push(name);
       this.input.value = "";
+      this.navigated = false;
       this.render();
       this.hideSuggest();
     }
@@ -649,14 +728,22 @@
 
     async onInput() {
       const value = this.input.value.trim();
-      const prefix = value.replace(/^[#№]+/, "");
+      const prefix = value.replace(/^[#№]+/, "").toLowerCase();
       clearTimeout(this.timer);
       this.timer = setTimeout(async () => {
-        const response = await call("tag_suggest", prefix, 6);
-        this.items = (response.tags || []).filter(
-          (name) => !this.tags.some((tag) => tag.toLowerCase() === String(name).toLowerCase()),
-        );
-        this.index = this.items.length ? 0 : -1;
+        // В режиме снятия тега — только теги выделенных файлов, без общей истории.
+        const source = this.onlyPreset ? [] : ((await call("tag_suggest", prefix, 8)).tags || []);
+        const seen = new Set();
+        const merged = [];
+        for (const name of [...source, ...this.preset]) {
+          const key = String(name).toLowerCase();
+          if (seen.has(key) || this.tags.some((tag) => tag.toLowerCase() === key)) continue;
+          if (prefix && !key.includes(prefix)) continue;
+          seen.add(key);
+          merged.push(name);
+        }
+        this.items = merged.slice(0, 12);
+        if (this.index >= this.items.length) this.index = this.items.length ? 0 : -1;
         this.renderSuggest();
       }, 110);
     }
@@ -685,8 +772,16 @@
     onKeyDown(event) {
       if (event.key === "Enter") {
         event.preventDefault();
-        if (this.index >= 0 && this.items[this.index]) this.add(this.items[this.index]);
-        else this.add(this.input.value);
+        const typed = this.input.value.trim();
+        if (typed) {
+          this.add(typed);
+        } else if (this.navigated && this.items.length) {
+          this.add(this.items[Math.max(0, this.index)]);
+        } else if (typeof this.onEmptyEnter === "function") {
+          this.onEmptyEnter();
+        } else if (this.items.length) {
+          this.add(this.items[Math.max(0, this.index)]);
+        }
         return;
       }
       if (event.key === "Tab" && this.items.length) {
@@ -697,6 +792,7 @@
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         if (!this.items.length) return;
         event.preventDefault();
+        this.navigated = true;
         const delta = event.key === "ArrowDown" ? 1 : -1;
         this.index = (this.index + delta + this.items.length) % this.items.length;
         this.renderSuggest();
@@ -712,8 +808,14 @@
     }
   }
 
-  const addTagBox = new TagBox($("#add-tagbox"));
-  const bulkTagBox = new TagBox($("#bulk-tagbox"));
+  const addTagBox = new TagBox($("#add-tagbox"), {
+    suggest: $("#add-tag-suggest"),
+    onEmptyEnter: () => submitAdd(),
+  });
+  const bulkTagBox = new TagBox($("#bulk-tagbox"), {
+    suggest: $("#bulk-tag-suggest"),
+    onEmptyEnter: () => submitTags(),
+  });
 
   // ---------------------------------------------------------------- модалка добавления
   const modalAdd = $("#modal-add");
@@ -731,6 +833,7 @@
       addFilesList.appendChild(item);
     });
     $("#add-count").textContent = String(paths.length);
+    $("#add-count-label").textContent = plural(paths.length, ["файл", "файла", "файлов"]);
     addTagBox.clear();
     addNote.value = "";
     openModal(modalAdd);
@@ -739,17 +842,19 @@
 
   async function submitAdd() {
     if (!addState.paths.length) return;
+    addTagBox.commit();
+    const tags = addTagBox.tags.slice();
     const button = $("#add-submit");
     button.disabled = true;
     button.textContent = "Добавляю…";
     try {
-      const response = await call("add_paths", addState.paths, addTagBox.tags, addNote.value || null);
+      const response = await call("add_paths", addState.paths, tags, addNote.value || null);
       const added = (response.added || []).length;
       (response.duplicates || []).slice(0, 3).forEach((message) => toast(message, "warn"));
       (response.errors || []).forEach((message) => toast(message, "error"));
       if (added) {
         toast(
-          `Добавлено ${added} ${plural(added, ["файл", "файла", "файлов"])}${addTagBox.tags.length ? ` · #${addTagBox.tags.join(" #")}` : ""}`,
+          `Добавлено ${added} ${plural(added, ["файл", "файла", "файлов"])}${tags.length ? ` · #${tags.join(" #")}` : ""}`,
           "success",
         );
       } else if (!response.duplicates?.length && !response.errors?.length) {
@@ -767,20 +872,43 @@
   const modalTag = $("#modal-tag");
   const tagState = { mode: "assign", ids: [] };
 
-  function openTagDialog(mode) {
+  async function openTagDialog(mode) {
     const ids = selectedIds();
     if (!ids.length) return;
+
+    bulkTagBox.clear();
+    bulkTagBox.setPreset([]);
+    bulkTagBox.input.placeholder = "курсовая2024";
+
+    if (mode === "remove") {
+      // Только теги, которые реально висят на выделенных файлах.
+      const response = await call("tags_for_files", ids);
+      const names = (response.tags || []).map((item) => item.name);
+      if (!names.length) {
+        toast("У выбранных файлов нет тегов — снимать нечего", "warn");
+        return;
+      }
+      bulkTagBox.setPreset(names, { only: true });
+      bulkTagBox.input.placeholder = "тег на выделенных файлах";
+    } else {
+      bulkTagBox.setPreset([]);
+    }
+
     tagState.mode = mode;
     tagState.ids = ids;
     $("#tag-title").textContent = mode === "remove" ? "Снять тег" : "Тег для выделенных";
     $("#tag-submit").textContent = mode === "remove" ? "Снять" : "Применить";
     $("#tag-count").textContent = String(ids.length);
-    bulkTagBox.clear();
+    $("#tag-count-label").textContent = plural(ids.length, ["файл", "файла", "файлов"]);
+    $("#modal-tag .sheet").classList.toggle("tag-sheet", true);
+
     openModal(modalTag);
     setTimeout(() => bulkTagBox.focus(), 60);
+    if (mode === "remove") bulkTagBox.onInput();
   }
 
   async function submitTags() {
+    bulkTagBox.commit();
     const tags = bulkTagBox.tags.slice();
     if (!tags.length) {
       toast("Введите хотя бы один тег", "warn");
@@ -816,28 +944,31 @@
     });
   });
 
-  $$(".modal").forEach((modal) => {
-    modal.addEventListener("mousedown", (event) => {
-      if (event.target === modal) closeModal(modal);
-    });
-  });
-
+  // Клик мимо карточки её не закрывает: окно добавления может уйти за другое
+  // окно при перетаскивании файлов, и возврат фокуса не должен терять выбор.
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       $$(".modal").forEach((modal) => {
         if (!modal.hidden) closeModal(modal);
       });
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    const isSearchKey = event.code === "KeyK" || (event.key || "").toLowerCase() === "k";
+    if ((event.ctrlKey || event.metaKey) && isSearchKey) {
       event.preventDefault();
       queryInput.focus();
       queryInput.select();
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+    const isFindKey = event.code === "KeyF" || (event.key || "").toLowerCase() === "f";
+    if ((event.ctrlKey || event.metaKey) && isFindKey) {
       event.preventDefault();
       queryInput.focus();
       queryInput.select();
     }
+  });
+
+  $("#kbd-hint").addEventListener("click", () => {
+    queryInput.focus();
+    queryInput.select();
   });
 
   $("#add-submit").addEventListener("click", () => submitAdd());
@@ -933,7 +1064,16 @@
   };
 
   // ---------------------------------------------------------------- старт
+  syncColumns();
   renderQueryHint();
+
+  window.addEventListener(
+    "resize",
+    debounce(() => {
+      syncColumns();
+      renderRows();
+    }, 120),
+  );
 
   apiReady.then(async (ready) => {
     if (!ready) {

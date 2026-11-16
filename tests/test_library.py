@@ -85,3 +85,40 @@ def test_human_size():
     assert human_size(999) == "999 Б"
     assert human_size(1024) == "1 КБ"
     assert human_size(1536) == "1.5 КБ"
+
+
+def test_created_at_is_saved_and_serialized(library, make_file):
+    record = library.zone.add(make_file("a.txt", b"a")).record
+
+    assert record.created_at is not None
+    item = library.search("a")["items"][0]
+    assert item["created_at_human"]
+    assert item["mtime_at_human"]
+
+
+def test_schema_migrates_from_v1(settings, tmp_path):
+    """Старая база (v1) открывается, получает created_at и не теряет записи."""
+    import sqlite3
+
+    from nook.model.db import _SCHEMA_V1
+
+    connection = sqlite3.connect(settings.db_path)
+    connection.executescript(_SCHEMA_V1)
+    connection.execute("PRAGMA user_version = 1")
+    connection.execute(
+        "INSERT INTO files(original_name, stored_path, hash, size, added_at) "
+        "VALUES ('old.txt', 'files/old.txt', 'hash', 3, '2024-01-01T00:00:00')"
+    )
+    connection.commit()
+    connection.close()
+
+    migrated = Library(settings)
+    try:
+        columns = {row["name"] for row in migrated.db.query("PRAGMA table_info(files)")}
+        assert "created_at" in columns
+        records = migrated.index.snapshot()
+        assert len(records) == 1
+        assert records[0].original_name == "old.txt"
+        assert records[0].created_at is None
+    finally:
+        migrated.close()

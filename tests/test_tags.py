@@ -101,3 +101,13 @@ def test_bulk_assign_many_files(library, make_file):
     assert added == 2
     assert library.tags.for_file(first.id) == ["общий"]
     assert library.tags.for_file(second.id) == ["общий"]
+
+
+def test_for_files_lists_tags_of_selection(library, make_file):
+    first = library.zone.add(make_file("a.txt", b"a"), ["общий", "только-а"]).record
+    second = library.zone.add(make_file("b.txt", b"b"), ["общий"]).record
+
+    tags = library.tags.for_files([first.id, second.id])
+
+    assert tags == [{"name": "общий", "count": 2}, {"name": "только-а", "count": 1}]
+    assert library.tags.for_files([]) == []

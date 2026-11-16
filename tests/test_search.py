@@ -52,6 +52,21 @@ def test_extension_filter(library, make_file):
     assert names(library.search("смета.xlsx")) == ["Смета.xlsx"]
 
 
+def test_extension_filter_in_params(library, make_file):
+    seed(library, make_file)
+    assert names(library.search("\\ .xlsx")) == ["Смета.xlsx"]
+    assert names(library.search("смета \\ .xlsx")) == ["Смета.xlsx"]
+
+
+def test_date_without_brackets(library, make_file):
+    seed(library, make_file)
+    assert names(library.search("\\ <01.01.2021")) == ["Практика_отчёт.pdf"]
+    assert set(names(library.search("\\ 01.01.2024 31.12.2025"))) == {
+        "Лекция 1.docx",
+        "Смета.xlsx",
+    }
+
+
 def test_date_upper_bound(library, make_file):
     seed(library, make_file)
     assert names(library.search("\\ [<01.01.2021]")) == ["Практика_отчёт.pdf"]
@@ -104,6 +119,7 @@ def test_search_payload_metadata(library, make_file):
     item = payload["items"][0]
     assert item["size_human"]
     assert item["added_at_human"] == "10.04.2020 10:00"
+    assert item["mtime_at_human"]
     assert item["tags"] == ["курсовая"]
 
 

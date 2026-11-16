@@ -82,6 +82,52 @@ def test_extension_with_params():
     assert query.tags == ("учеба",)
 
 
+def test_extension_in_params():
+    query = parse_query("смета \\ .xlsx")
+    assert query.ext == "xlsx"
+    assert query.text == "смета"
+    assert parse_query("\\ *.pdf").ext == "pdf"
+    assert parse_query("\\ .PDF").ext == "pdf"
+
+
+def test_bare_date():
+    query = parse_query("\\ 12.11.2026")
+    assert query.text == ""
+    assert query.dates[0].start == date(2026, 11, 12)
+    assert query.dates[0].end == date(2026, 11, 12)
+
+
+def test_bare_date_comparison():
+    assert parse_query("\\ <12.11.2026").dates[0].end == date(2026, 11, 12)
+    assert parse_query("\\ >12.11.2026").dates[0].start == date(2026, 11, 12)
+    assert parse_query("\\ >=12.11.2026").dates[0].start == date(2026, 11, 12)
+
+
+def test_bare_date_range_from_two_dates():
+    query = parse_query("\\ 12.11.2026 31.12.2026")
+    assert len(query.dates) == 1
+    assert query.dates[0].start == date(2026, 11, 12)
+    assert query.dates[0].end == date(2026, 12, 31)
+
+
+def test_bare_date_with_text_tag_and_extension():
+    query = parse_query("практ \\ #курсовая 12.04.2020 .pdf")
+    assert query.text == "практ"
+    assert query.tags == ("курсовая",)
+    assert query.dates[0].start == date(2020, 4, 12)
+    assert query.ext == "pdf"
+
+
+def test_number_is_not_a_date():
+    assert parse_query("\\ 2024").dates == ()
+    assert parse_query("\\ 123").dates == ()
+
+
+def test_brackets_still_work():
+    query = parse_query("\\ [<12.04.2020]")
+    assert query.dates[0].end == date(2020, 4, 12)
+
+
 def test_tag_normalization_yo_and_case():
     query = parse_query("\\ #Ёлка #УЧЁБА")
     assert set(query.tags) == {"елка", "учеба"}
